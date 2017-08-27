@@ -1,0 +1,15 @@
+language: rust
+
+rust:
+  - 1.18.0
+
+cache: cargo
+
+before_script:
+  - export PATH="$PATH:$HOME/.cargo/bin"
+  - which rustfmt || cargo install rustfmt
+
+script:
+  - cargo fmt
+  - cargo build
+  - cargo test
