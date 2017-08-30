@@ -7,11 +7,8 @@ extern crate env_logger;
 extern crate serde;
 extern crate serde_json;
 extern crate git2;
-extern crate time;
 extern crate notify;
 extern crate fs_extra;
-
-mod config;
 
 use std::path::{Path, PathBuf};
 use std::error::Error;
@@ -22,8 +19,13 @@ use std::fs::File;
 use fs_extra::dir;
 use fs_extra::dir::CopyOptions;
 use git2::{Repository, Direction, Oid, Index};
-use config::Config;
 use notify::{RecommendedWatcher, Watcher, RecursiveMode, DebouncedEvent};
+
+mod config;
+mod git;
+
+use config::Config;
+use git::Git;
 
 type Result<T> = std::result::Result<T, Box<Error>>;
 
@@ -37,34 +39,36 @@ pub fn main() {
 fn autocommit() -> Result<()> {
     let config: Config = serde_json::from_reader(File::open("resources/config.json")?)?;
     info!("{:#?}", config);
-    let repo = Repository::open(&config.destination_repo)?;
-    watch_and_commit(&repo, &config)
+    watch_and_commit(config)
 }
 
-fn watch_and_commit(repo: &Repository, config: &Config) -> Result<()> {
+fn watch_and_commit(config: Config) -> Result<()> {
     let (sender, receiver) = channel();
     // delay helps handle composed events
     // see https://docs.rs/notify/4.0.1/notify/trait.Watcher.html#tymethod.new
     let mut watcher: RecommendedWatcher = Watcher::new(sender, Duration::from_secs(2))?;
-    for file in &config.files_to_watch {
+    for file in config.files_to_watch() {
         watcher.watch(file, RecursiveMode::Recursive)?;
     }
+    let ref df = &config.destination_repo();
+    let repo_path = Path::new(df);
+    let git = Git::new(config)?;
     loop {
         match receiver.recv()? {
             DebouncedEvent::Write(..) => {
-                add_all_and_commit_and_push(&repo, &config)?;
+                git.add_all_and_commit_and_push()?;
             }
             DebouncedEvent::Create(path) => {
-                copy_file_or_dir_into_repo(path, &repo.path())?;
-                add_all_and_commit_and_push(&repo, &config)?;
+                copy_file_or_dir_into_repo(path, repo_path)?;
+                git.add_all_and_commit_and_push()?;
             }
             DebouncedEvent::Remove(path) => {
-                remove_file_or_dir_from_repo(path, &repo.path())?;
-                add_all_and_commit_and_push(&repo, &config)?;
+                remove_file_or_dir_from_repo(path, repo_path)?;
+                git.add_all_and_commit_and_push()?;
             }
             DebouncedEvent::Rename(path_from, path_to) => {
-                rename_file_or_dir_in_repo(path_from, path_to, &repo.path())?;
-                add_all_and_commit_and_push(&repo, &config)?;
+                rename_file_or_dir_in_repo(path_from, path_to, repo_path)?;
+                git.add_all_and_commit_and_push()?;
             }
             // not interested in other events
             _ => {}
@@ -113,42 +117,4 @@ fn rename_file_or_dir_in_repo(from: PathBuf, to: PathBuf, repo: &Path) -> Result
     }
     remove_file_or_dir_from_repo(from, repo)?;
     copy_file_or_dir_into_repo(to, repo)
-}
-
-fn add_all_and_commit_and_push(repo: &Repository, config: &Config) -> Result<()> {
-    let index = repo.index()?;
-    let oid = add_all(index)?;
-    commit(&repo, oid)?;
-    push(&repo, &config)?;
-    Ok(())
-}
-
-fn add_all(mut index: Index) -> Result<Oid> {
-    index.add_path(Path::new("."))?;
-    let oid = index.write_tree()?;
-    Ok(oid)
-}
-
-fn commit(repo: &Repository, oid: Oid) -> Result<()> {
-    let tree = repo.find_tree(oid)?;
-    let message = format!("Autocommit {}", time::now().rfc822());
-    let head_oid = repo.head()?.target().ok_or("Can't find head")?;
-    let head = repo.find_commit(head_oid)?;
-    let signature = repo.signature()?;
-    repo.commit(
-        Some("HEAD"),
-        &signature,
-        &signature,
-        &message,
-        &tree,
-        &[&head],
-    )?;
-    Ok(())
-}
-
-fn push(repo: &Repository, config: &Config) -> Result<()> {
-    let mut remote = repo.find_remote(&config.remote)?;
-    remote.connect(Direction::Push)?;
-    remote.push(&[&config.refs], None)?;
-    Ok(())
 }
