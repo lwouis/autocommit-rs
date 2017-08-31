@@ -17,23 +17,23 @@ pub struct Git {
 
 impl Git {
     pub fn new(config: Config) -> Result<Git> {
-        let repo = Repository::open(config.destination_repo())?;
-        let git = Git {
+        let path = config.destination_repo();
+        let repo = Repository::open(path)?;
+        Ok(Git {
             config: config,
-            repo: repo,
             index: repo.index()?,
-        };
-        Ok(git)
+            repo: repo,
+        })
     }
 
-    pub fn add_all_and_commit_and_push(&self) -> Result<()> {
+    pub fn add_all_and_commit_and_push(&mut self) -> Result<()> {
         let oid = self.add_all()?;
         self.commit(oid)?;
         self.push()?;
         Ok(())
     }
 
-    fn add_all(&self) -> Result<Oid> {
+    fn add_all(&mut self) -> Result<Oid> {
         self.index.add_path(Path::new("."))?;
         let oid = self.index.write_tree()?;
         Ok(oid)

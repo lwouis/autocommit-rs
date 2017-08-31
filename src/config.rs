@@ -15,16 +15,20 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn files_to_watch(&self) -> &Vec<String> {
-        &self.files_to_watch
+    pub fn files_to_watch(&self) -> Vec<String> {
+        let ref v = self.files_to_watch;
+        v.clone()
     }
-    pub fn destination_repo(&self) -> &str {
-        &self.destination_repo
+    pub fn destination_repo(&self) -> String {
+        let ref s = self.destination_repo;
+        s.clone()
     }
-    pub fn remote(&self) -> &str {
-        &self.remote
+    pub fn remote(&self) -> String {
+        let ref s = self.remote;
+        s.clone()
     }
-    pub fn refs(&self) -> &str {
-        &self.refs
+    pub fn refs(&self) -> String {
+        let ref s = self.refs;
+        s.clone()
     }
 }

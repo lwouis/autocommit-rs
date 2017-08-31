@@ -18,7 +18,6 @@ use std::fs;
 use std::fs::File;
 use fs_extra::dir;
 use fs_extra::dir::CopyOptions;
-use git2::{Repository, Direction, Oid, Index};
 use notify::{RecommendedWatcher, Watcher, RecursiveMode, DebouncedEvent};
 
 mod config;
@@ -50,9 +49,9 @@ fn watch_and_commit(config: Config) -> Result<()> {
     for file in config.files_to_watch() {
         watcher.watch(file, RecursiveMode::Recursive)?;
     }
-    let ref df = &config.destination_repo();
-    let repo_path = Path::new(df);
-    let git = Git::new(config)?;
+    let destination_repo = config.destination_repo();
+    let repo_path = Path::new(&destination_repo);
+    let mut git = Git::new(config)?;
     loop {
         match receiver.recv()? {
             DebouncedEvent::Write(..) => {
